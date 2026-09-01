@@ -57,6 +57,7 @@ public class FileService {
     // =========================================================
     // UPLOAD FILE
     // =========================================================
+
     public StoredFile uploadFile(
             MultipartFile file,
             Long folderId,
@@ -68,12 +69,16 @@ public class FileService {
 
         Folder folder = null;
 
+        // Upload into folder if folderId is provided
         if (folderId != null) {
 
             folder = folderRepository.findById(folderId)
                     .orElseThrow(() ->
-                            new RuntimeException("Folder not found"));
+                            new RuntimeException(
+                                    "Folder not found"
+                            ));
 
+            // Make sure folder belongs to current user
             if (!folder.getOwner().getId()
                     .equals(owner.getId())) {
 
@@ -82,23 +87,30 @@ public class FileService {
                 );
             }
 
+            // Cannot upload into deleted folder
             if (folder.isDeleted()) {
+
                 throw new RuntimeException(
                         "Cannot upload to a folder in Trash"
                 );
             }
         }
 
-        String originalName = file.getOriginalFilename();
+        String originalName =
+                file.getOriginalFilename();
 
-        if (originalName == null || originalName.isBlank()) {
+        if (originalName == null ||
+                originalName.isBlank()) {
+
             originalName = "unknown";
         }
 
+        // Remove any path from filename
         originalName = Paths.get(originalName)
                 .getFileName()
                 .toString();
 
+        // Prevent duplicate active file names
         if (fileRepository
                 .existsByOwnerAndFolderAndNameAndDeletedFalse(
                         owner,
@@ -110,6 +122,7 @@ public class FileService {
             );
         }
 
+        // Generate unique physical storage name
         String storageKey =
                 UUID.randomUUID() + "_" + originalName;
 
@@ -118,38 +131,46 @@ public class FileService {
                         .resolve(storageKey)
                         .normalize();
 
+        // Security check
         if (!targetLocation.startsWith(storageLocation)) {
-            throw new RuntimeException("Invalid file path");
+
+            throw new RuntimeException(
+                    "Invalid file path"
+            );
         }
 
         try {
+
             Files.copy(
                     file.getInputStream(),
                     targetLocation
             );
+
         } catch (IOException e) {
+
             throw new RuntimeException(
                     "Could not save file",
                     e
             );
         }
 
-        StoredFile storedFile = StoredFile.builder()
-                .name(originalName)
-                .originalName(originalName)
-                .contentType(
-                        file.getContentType() != null
-                                ? file.getContentType()
-                                : "application/octet-stream"
-                )
-                .size(file.getSize())
-                .storageKey(storageKey)
-                .owner(owner)
-                .folder(folder)
-                .deleted(false)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
-                .build();
+        StoredFile storedFile =
+                StoredFile.builder()
+                        .name(originalName)
+                        .originalName(originalName)
+                        .contentType(
+                                file.getContentType() != null
+                                        ? file.getContentType()
+                                        : "application/octet-stream"
+                        )
+                        .size(file.getSize())
+                        .storageKey(storageKey)
+                        .owner(owner)
+                        .folder(folder)
+                        .deleted(false)
+                        .createdAt(LocalDateTime.now())
+                        .updatedAt(LocalDateTime.now())
+                        .build();
 
         return fileRepository.save(storedFile);
     }
@@ -157,6 +178,7 @@ public class FileService {
     // =========================================================
     // GET MY FILES
     // =========================================================
+
     public List<StoredFile> getMyFiles(User owner) {
 
         return fileRepository
@@ -164,8 +186,48 @@ public class FileService {
     }
 
     // =========================================================
+    // GET FILES INSIDE FOLDER
+    // =========================================================
+
+    public List<StoredFile> getFilesInFolder(
+            Long folderId,
+            User owner) {
+
+        Folder folder =
+                folderRepository.findById(folderId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Folder not found"
+                                ));
+
+        // Make sure folder belongs to current user
+        if (!folder.getOwner().getId()
+                .equals(owner.getId())) {
+
+            throw new RuntimeException(
+                    "You do not have access to this folder"
+            );
+        }
+
+        // Do not show files from deleted folder
+        if (folder.isDeleted()) {
+
+            throw new RuntimeException(
+                    "Folder is in Trash"
+            );
+        }
+
+        return fileRepository
+                .findByOwnerAndFolderAndDeletedFalse(
+                        owner,
+                        folder
+                );
+    }
+
+    // =========================================================
     // DOWNLOAD FILE
     // =========================================================
+
     public Resource downloadFile(
             Long fileId,
             User owner) {
@@ -186,16 +248,19 @@ public class FileService {
         }
 
         if (storedFile.isDeleted()) {
+
             throw new RuntimeException(
                     "File is in Trash"
             );
         }
 
-        Path filePath = storageLocation
-                .resolve(storedFile.getStorageKey())
-                .normalize();
+        Path filePath =
+                storageLocation
+                        .resolve(storedFile.getStorageKey())
+                        .normalize();
 
         if (!Files.exists(filePath)) {
+
             throw new RuntimeException(
                     "Physical file not found"
             );
@@ -207,6 +272,7 @@ public class FileService {
     // =========================================================
     // GET FILE BY ID
     // =========================================================
+
     public StoredFile getFileById(Long fileId) {
 
         return fileRepository.findById(fileId)
@@ -219,6 +285,7 @@ public class FileService {
     // =========================================================
     // MOVE FILE TO TRASH
     // =========================================================
+
     public StoredFile trashFile(
             Long fileId,
             User owner) {
@@ -239,6 +306,7 @@ public class FileService {
         }
 
         if (file.isDeleted()) {
+
             throw new RuntimeException(
                     "File is already in Trash"
             );
@@ -253,6 +321,7 @@ public class FileService {
     // =========================================================
     // GET TRASH
     // =========================================================
+
     public List<StoredFile> getTrash(User owner) {
 
         return fileRepository
@@ -262,6 +331,7 @@ public class FileService {
     // =========================================================
     // RESTORE FILE
     // =========================================================
+
     public StoredFile restoreFile(
             Long fileId,
             User owner) {
@@ -282,6 +352,7 @@ public class FileService {
         }
 
         if (!file.isDeleted()) {
+
             throw new RuntimeException(
                     "File is not in Trash"
             );
@@ -296,6 +367,7 @@ public class FileService {
     // =========================================================
     // PERMANENT DELETE FILE
     // =========================================================
+
     @Transactional
     public void permanentlyDeleteFile(
             Long fileId,
@@ -317,6 +389,7 @@ public class FileService {
         }
 
         if (!file.isDeleted()) {
+
             throw new RuntimeException(
                     "File must be in Trash first"
             );
@@ -341,8 +414,10 @@ public class FileService {
         // =====================================================
         // DELETE SHARES FIRST
         // =====================================================
+
         System.out.println(
-                "Deleting shares for file ID = " + file.getId()
+                "Deleting shares for file ID = "
+                        + file.getId()
         );
 
         shareRepository.deleteByFile(file);
@@ -355,9 +430,11 @@ public class FileService {
         // =====================================================
         // DELETE PHYSICAL FILE
         // =====================================================
-        Path filePath = storageLocation
-                .resolve(file.getStorageKey())
-                .normalize();
+
+        Path filePath =
+                storageLocation
+                        .resolve(file.getStorageKey())
+                        .normalize();
 
         try {
 
@@ -380,6 +457,7 @@ public class FileService {
         // =====================================================
         // DELETE FILE FROM DATABASE
         // =====================================================
+
         fileRepository.delete(file);
         fileRepository.flush();
 
@@ -396,6 +474,7 @@ public class FileService {
     // =========================================================
     // RENAME FILE
     // =========================================================
+
     public StoredFile renameFile(
             Long fileId,
             RenameFileRequest request,
@@ -444,9 +523,10 @@ public class FileService {
             );
         }
 
-        String newName = Paths.get(request.getName())
-                .getFileName()
-                .toString();
+        String newName =
+                Paths.get(request.getName())
+                        .getFileName()
+                        .toString();
 
         if (fileRepository
                 .existsByOwnerAndFolderAndNameAndDeletedFalse(
@@ -468,6 +548,7 @@ public class FileService {
     // =========================================================
     // MOVE FILE
     // =========================================================
+
     public StoredFile moveFile(
             Long fileId,
             MoveFileRequest request,
@@ -480,10 +561,12 @@ public class FileService {
                                         "File not found"
                                 ));
 
+        // Check owner
         boolean isOwner =
                 file.getOwner().getId()
                         .equals(owner.getId());
 
+        // Check editor permission
         boolean isEditor = false;
 
         if (!isOwner) {
@@ -509,6 +592,7 @@ public class FileService {
             );
         }
 
+        // Cannot move deleted file
         if (file.isDeleted()) {
 
             throw new RuntimeException(
@@ -518,6 +602,7 @@ public class FileService {
 
         Folder newFolder = null;
 
+        // null means move to My Drive/root
         if (request.getFolderId() != null) {
 
             newFolder =
@@ -529,6 +614,7 @@ public class FileService {
                                             "Folder not found"
                                     ));
 
+            // Folder must belong to file owner
             if (!newFolder.getOwner().getId()
                     .equals(file.getOwner().getId())) {
 
@@ -537,10 +623,30 @@ public class FileService {
                 );
             }
 
+            // Cannot move into deleted folder
             if (newFolder.isDeleted()) {
 
                 throw new RuntimeException(
                         "Cannot move file into Trash folder"
+                );
+            }
+        }
+
+        // Check duplicate filename in destination
+        if (fileRepository
+                .existsByOwnerAndFolderAndNameAndDeletedFalse(
+                        file.getOwner(),
+                        newFolder,
+                        file.getName())) {
+
+            // If moving to same folder, don't reject
+            if (file.getFolder() == null ||
+                    newFolder == null ||
+                    !file.getFolder().getId()
+                            .equals(newFolder.getId())) {
+
+                throw new RuntimeException(
+                        "A file with this name already exists in the destination folder"
                 );
             }
         }
@@ -554,6 +660,7 @@ public class FileService {
     // =========================================================
     // SEARCH FILES
     // =========================================================
+
     public List<StoredFile> searchFiles(
             String name,
             User owner) {
